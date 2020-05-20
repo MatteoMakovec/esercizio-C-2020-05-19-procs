@@ -35,32 +35,30 @@
 #define CHECK_ERR(a,msg) {if ((a) == -1) { perror((msg)); exit(EXIT_FAILURE); } }
 
 int countdown, process_counter[N], shutdown;
+int process_count;
 sem_t * semaphore;
+char * addr;
 
 void child_process(int index) {
-	int s;
-	int counter = 0;
-
-	printf("[processo figlio %d] entry point\n", index);
-
 	while(1){
-		if(countdown == 0){
-			  printf("shutdown invocato\n\n");
-			  shutdown = 1;
+		if(addr[countdown] == 0){
+			addr[shutdown] = 1;
 		  }
-		if(shutdown != 0){
-			exit(counter);
+		if(addr[shutdown] != 0){
+			exit(EXIT_SUCCESS);
 		}
+
 		if (sem_wait(semaphore) == -1) {
 			perror("sem_wait");
 			exit(EXIT_FAILURE);
 		}
 
-		if(countdown > 0){
-			printf("[processo figlio %d] countdown diminuito\n", index);
-			countdown--;
-			counter++;
+
+		if(addr[countdown] > 0){
+			addr[countdown] -= 1;
+			addr[process_count+index] += 1;
 		}
+
 
 		if (sem_post(semaphore) == -1) {
 			perror("sem_post");
@@ -72,13 +70,16 @@ void child_process(int index) {
 int main() {
 	int s;
 
-
 	semaphore = malloc(sizeof(sem_t));
 	s = sem_init(semaphore,1, 1);
 	CHECK_ERR(s,"sem_init")
 
-	countdown = COUNTDOWN_VALUE;
-	printf("countdown impostato\n");
+	addr = mmap(NULL, sizeof(int)+sizeof(process_counter)+sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	countdown = 0;
+	process_count = sizeof(int);
+	shutdown = sizeof(int)+sizeof(process_counter);
+
+	addr[countdown] = COUNTDOWN_VALUE;
 
 	for (int i = 0; i < N; i++) {
 		switch (fork()) {
@@ -87,33 +88,22 @@ int main() {
 			  break;
 
 		  case -1:
-			  perror("fork");
+			  perror("fork() error");
 			  exit(EXIT_FAILURE);
 
 		  default:
-			  process_counter[i];
+			  ;
 		}
 	  }
 
-/*
-	while(1){
-	  if(countdown == 0){
-		  printf("shutdown invocato\n\n");
-		  shutdown = 1;
-	  }
-	}*/
-
 	for(int i = 0; i < N; i++){
-		/*
-		 *
-		 * Creare un sistema di wait che prenda tutti i valori di uscita dei vari child e lo salvi
-		 * nella cella del process_counter corrispondente al processo child terminato
-		 *
-		 */
+		if(wait(NULL) == -1){
+			perror("wait() error");
+		}
 	}
 
 	for(int i = 0; i < N; i++){
-		printf("processo figlio %d: %d\n", i, process_counter[i]);
+		printf("processo figlio %d: %d\n", i, addr[process_count+i]);
 	}
 
 	return 0;
